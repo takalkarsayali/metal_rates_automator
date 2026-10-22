@@ -1,0 +1,53 @@
+
+# Credentials and local configuration
+.env
+config.local.py
+secrets.*
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Logs
+logs/
+*.log
+
+# Internal business data
+*.xlsx
+*.xls
+*.xlsm
+
+# Local browser/test artifacts
+screenshots/
+downloads/
+
+# Secrets and local configuration
+.env
+config.local.py
+secrets.*
+*.pem
+*.key
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Logs and backups
+logs/
+backups/
+*.log
+
+# Internal business data
+*.xlsx
+*.xls
+*.xlsm
+*BRD.docx
+
+# Local editor settings
+.vscode/
