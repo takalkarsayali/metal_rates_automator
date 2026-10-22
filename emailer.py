@@ -152,11 +152,11 @@ def build_html(
             f"<td style='{CELL_STYLE}'>{metal}</td>"
             f"<td style='{CELL_STYLE}text-align:center;'>"
             f"{_fmt(minmax[metal].get('min'))}</td>"
-            f"<td style='{CELL_STYLE}background:{PINK};text-align:center;'>"
+            f"<td style='{CELL_STYLE}background:{LIGHT_PINK};text-align:center;'>"
             f"{_date_fmt(minmax[metal].get('min_date'))}</td>"
             f"<td style='{CELL_STYLE}text-align:center;'>"
             f"{_fmt(minmax[metal].get('max'))}</td>"
-            f"<td style='{CELL_STYLE}background:{PINK};text-align:center;'>"
+            f"<td style='{CELL_STYLE}background:{LIGHT_PINK};text-align:center;'>"
             f"{_date_fmt(minmax[metal].get('max_date'))}</td>"
         f"</tr>"
         for metal in METAL_DISPLAY_ORDER
@@ -187,13 +187,13 @@ def build_html(
         color:#111111;
     ">
 
-        <h5> Dear Team, </h5>
-        <h5>
+        <p style="font-size: 15px"> Dear Team, </p>
+        <p style="font-size: 15px">
             Please find below the metal prices in USD as on
             <b>{target_date:%d %b %Y}</b> with reference to LBMA website
             for Au, Ag, LPPM website for Pt, Pd &amp; JM website for Ir,
             Rh, Ru.
-        </h5>
+        </p>
 
         <!-- LIVE METALS PRICE TABLE -->
 
@@ -276,7 +276,7 @@ def build_html(
 
         <!-- MONTHLY MINIMUM / MAXIMUM TABLE -->
 
-        <p style="margin-top:20px;">
+        <p style="margin-top:20px; font-size: 15px">
             Please find in below table, the metal rates for
             <b>{target_date:%b %Y}</b> with Minimum &amp; Maximum rates:
         </p>
