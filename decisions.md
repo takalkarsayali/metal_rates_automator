@@ -1,129 +1,154 @@
 # Engineering Decisions — Metal Rates Automator
 
-> Purpose: record meaningful implementation decisions, the reason behind each choice, and the trade-offs.
->
-> **Maintenance rule:** Add an entry whenever a code change materially affects architecture, data sources, parsing, validation, error handling, output files, configuration, security, or delivery. Do not log trivial formatting-only changes.
+> Record material decisions, their rationale, trade-offs, and validation. The current implementation is authoritative; mark entries superseded rather than silently deleting history.
 
 ## Project context
 
-Metal Rates Automator retrieves precious-metal prices from external sources, processes the rates, updates an Excel workbook, and distributes the workbook by email. The project has used LBMA data, Johnson Matthey data, and is being extended to fetch IBJA rates.
+The Python automation retrieves metal prices, updates a historical Excel tracker, calculates monthly summaries, and emails an HTML report with the workbook attached. Sources include LBMA, Johnson Matthey, IBJA Silver 999, and RBI exchange rates.
 
 ## Decision log
 
 ### D-001 — Use Python for the automation workflow
-
 - **Decision:** Implement the workflow in Python.
-- **Reason:** Python has suitable libraries for HTTP requests, HTML parsing, browser automation when needed, Excel workbook handling, and SMTP email delivery. It also keeps the workflow readable and maintainable as a scheduled or manually executed script.
-- **Trade-off:** Runtime dependencies must be installed and managed in the target Windows environment.
+- **Reason:** Python supports HTTP retrieval, HTML parsing, browser automation, Excel updates, and SMTP email.
+- **Trade-off:** Dependencies and runtime configuration must be maintained on the target Windows environment.
 - **Status:** Adopted.
 
 ### D-002 — Use `requests` for ordinary HTTP retrieval
-
-- **Decision:** Use `requests` to retrieve pages or endpoints that can be accessed with a normal HTTP request.
-- **Reason:** It provides a simple API for request headers, timeouts, status checks, and response content. This is sufficient when the source returns the required data directly.
-- **Trade-off:** It cannot execute JavaScript or automatically reproduce a browser session. A site may block requests or return incomplete content.
-- **Implementation guidance:** Set a timeout, use an appropriate User-Agent when needed, call `raise_for_status()`, and handle request exceptions. Never treat a successful HTTP status alone as proof that the extracted prices are correct.
+- **Decision:** Use `requests` when a source can be retrieved using standard HTTP.
+- **Reason:** It supports request headers, timeouts, status checks, and response handling.
+- **Trade-off:** It cannot execute JavaScript or reproduce all browser sessions.
+- **Implementation guidance:** Use timeouts, check HTTP status, and validate extracted data rather than assuming a successful response means valid rates.
 - **Status:** Adopted where applicable.
 
 ### D-003 — Use Beautiful Soup for HTML table parsing
+- **Decision:** Use `BeautifulSoup` to inspect table rows, cells, and headers.
+- **Reason:** Preserving row/column relationships is necessary to map a rate to the correct metal and session.
+- **Trade-off:** Source page layout changes can require parser maintenance.
+- **Status:** Adopted for HTML parsing.
 
-- **Decision:** Use `BeautifulSoup` (`bs4`) to parse HTML and inspect table rows and cells.
-- **Reason:** It allows the scraper to preserve the table structure and extract headers and cell values, rather than flattening the page into one long string.
-- **Trade-off:** Selectors and table layouts can change when the source website changes.
-- **Implementation guidance:** Match values to explicit headers and row labels. Avoid assuming that a value next to a label is automatically an AM value or PM value. Validate the number and meaning of columns before returning a rate.
-- **Status:** Adopted for IBJA HTML parsing.
+### D-004 — Use Playwright when browser behavior is required
+- **Decision:** Use Playwright for sources where ordinary HTTP endpoints are blocked or do not expose the needed data.
+- **Reason:** Browser execution can retrieve content unavailable through simple requests; this has been relevant to LBMA retrieval when direct JSON endpoints returned 403.
+- **Trade-off:** Browser automation is heavier and requires browser/runtime setup.
+- **Status:** Adopted where applicable.
 
-### D-004 — Use Playwright when a source requires browser behavior
+### D-005 — Isolate source fetching and parsing
+- **Decision:** Keep source-specific retrieval/parsing in separate modules: `lbma_fetcher.py`, `jm_fetcher.py`, `ibja_fetcher.py`, and `rbi_fetcher.py`.
+- **Reason:** Providers differ in layout, date conventions, and failure modes.
+- **Trade-off:** Some helper logic may be repeated; share helpers only when their contracts truly match.
+- **Status:** Adopted.
 
-- **Decision:** Use Playwright for a source when ordinary HTTP retrieval is blocked or the required content is produced through browser-side behavior.
-- **Reason:** A real browser context can execute JavaScript and access content that a simple HTTP request does not expose. This approach has been used for LBMA price retrieval where direct JSON endpoints returned HTTP 403.
-- **Trade-off:** Browser automation is heavier, slower, and requires browser/runtime setup. It should not be the default for a simple static HTML page.
-- **Implementation guidance:** Prefer a direct documented endpoint when it is accessible and permitted; otherwise keep browser automation isolated in the relevant fetcher and validate the captured payload.
-- **Status:** Adopted for applicable sources.
+### D-006 — Preserve AM and PM as separate observations
+- **Decision:** Keep AM and PM values separate and do not infer one from the other.
+- **Reason:** Missing values are not zero and a single rate may not identify a session.
+- **Trade-off:** Missing sessions must remain representable and visible.
+- **Implementation guidance:** Keep unavailable values as missing; never copy AM into PM or assign a session without source evidence.
+- **Status:** Adopted.
 
-### D-005 — Keep each rate source's fetching/parsing logic isolated
-
-- **Decision:** Keep source-specific retrieval and parsing in separate modules (for example, LBMA, Johnson Matthey, and IBJA fetchers).
-- **Reason:** Each provider has different page layouts, data formats, availability rules, and failure modes. Isolating those differences prevents one provider's parsing changes from unexpectedly breaking the others.
-- **Trade-off:** Some small helper logic may be repeated. Shared helpers should only be introduced when they genuinely have the same contract and behavior.
-- **Status:** Recommended architecture; confirm against the current repository.
-
-### D-006 — Preserve AM and PM as separate values
-
-- **Decision:** Represent AM and PM rates as separate fields and do not infer one from the other.
-- **Reason:** A missing PM rate is not equivalent to a PM rate of zero, and a single displayed value may not identify which session it belongs to. Combining or guessing the sessions could put incorrect prices into the workbook or email.
-- **Trade-off:** The pipeline must support a missing session and make its handling explicit.
-- **Implementation guidance:** Use `None`/an explicit missing value when a session is unavailable; do not silently copy AM into PM or label an unverified value as either session. Confirm the source's actual headers and cell relationships before mapping prices.
-- **Status:** Adopted as a data-integrity requirement.
-
-### D-007 — Parse table rows and headers instead of relying on flattened text
-
-- **Decision:** For tabular sources, inspect individual rows/cells and map values using headers and row labels.
-- **Reason:** `table.get_text(" | ", strip=True)` is useful for debugging, but flattening loses structural relationships. A value such as `207098` appearing near “Silver 999” does not alone establish whether it is AM, PM, or a single current indicative value.
-- **Trade-off:** Structured parsing needs more checks and may require updates if the website layout changes.
+### D-007 — Parse source tables structurally
+- **Decision:** Match prices using table headers, row labels, and cell positions rather than flattened page text.
+- **Reason:** Flattened text loses the relationship between labels, dates, sessions, and values.
+- **Trade-off:** Structured parsing requires validation and can need changes when page markup changes.
 - **Status:** Adopted as the preferred parsing method.
 
-### D-008 — Validate source data before updating the workbook
+### D-008 — Validate data before writing it
+- **Decision:** Validate required metals, numeric values, dates, units, and session mapping before workbook updates.
+- **Reason:** A wrong rate distributed as valid is more harmful than a clearly reported missing rate.
+- **Trade-off:** The workflow may stop or leave a supplementary section blank when data cannot be verified.
+- **Status:** Required safeguard.
 
-- **Decision:** Validate extracted rates, dates, required metals, and AM/PM mappings before writing output.
-- **Reason:** Incorrect source mapping is more harmful than a failed run because a wrong price may be distributed as if it were valid.
-- **Trade-off:** A run may stop or mark a value unavailable when the source layout changes.
-- **Implementation guidance:** Check that required fields exist, values are parseable numeric rates where expected, dates are valid, and the selected session matches its header. Log a clear error when validation fails. Do not invent fallback values.
-- **Status:** Required safeguard; verify current implementation.
+### D-009 — Use `openpyxl` for workbook updates
+- **Decision:** Use `openpyxl` to read and update the `.xlsx` tracker.
+- **Reason:** It enables direct worksheet/cell manipulation without automating the Excel UI for ordinary updates.
+- **Trade-off:** Some Excel-specific features and formula recalculation behavior require testing with the actual template.
+- **Status:** Adopted.
 
-### D-009 — Use `openpyxl` for Excel workbook updates
+### D-010 — Use Python logging for diagnostics
+- **Decision:** Use the standard-library `logging` module for lifecycle messages and errors.
+- **Reason:** Logs support troubleshooting scheduled runs and source-specific failures.
+- **Trade-off:** Logging configuration must avoid duplicate handlers and excessive console output.
+- **Status:** Adopted.
 
-- **Decision:** Use `openpyxl` for direct edits to `.xlsx` workbooks when preserving and updating workbook cells is the main task.
-- **Reason:** It supports reading and writing worksheets, cell values, and workbook structure without requiring Excel automation for common operations.
-- **Trade-off:** Some advanced Excel features may not be recalculated or preserved exactly as Excel itself would handle them. The workbook should be tested with the actual template.
-- **Implementation guidance:** Keep workbook paths/configuration explicit, validate target worksheets and cells, save to the intended output, and verify that the resulting file exists and is non-empty.
-- **Status:** Adopted in the project context; confirm exact usage in the current code.
+### D-011 — Keep credentials out of source control
+- **Decision:** Load SMTP credentials from environment/local configuration and exclude secrets from Git.
+- **Reason:** Credentials must not be committed with the project.
+- **Implementation guidance:** Keep `.env`, local config, passwords, tokens, and private endpoints out of the repository. Use placeholders in example configuration. Do not rely on a real password as a source-code fallback.
+- **Trade-off:** Each runtime environment must be configured securely.
+- **Status:** Required for repository publication and deployment.
 
-### D-010 — Use Python's built-in logging for operational diagnostics
+### D-012 — Handle non-trading days and incomplete rows explicitly
+- **Decision:** Respect provider-specific publication dates and incomplete data.
+- **Reason:** Weekends, holidays, and partially populated current rows can yield missing or misleading rates.
+- **Implementation guidance:** Validate dates and values, not just row position. The Johnson Matthey page has previously required care because its first/current row may be incomplete.
+- **Status:** Adopted as a data-integrity requirement.
 
-- **Decision:** Use the standard-library `logging` module rather than scattered `print()` statements for operational messages.
-- **Reason:** Logging supports severity levels, consistent formatting, and routing to the console or a file. This makes failures easier to diagnose during manual and scheduled runs.
-- **Trade-off:** Logging configuration needs to be centralized to avoid duplicate or excessively verbose messages.
-- **Implementation guidance:** Use `INFO` for important lifecycle events, `WARNING` for recoverable issues, and `ERROR`/`EXCEPTION` for failures. Avoid logging credentials or sensitive email content.
-- **Status:** Adopted in the project context; tune verbosity to operational needs.
+### D-013 — Keep the seven mandatory metal prices on a common effective date
+- **Decision:** Resolve one common effective date for the mandatory set: Gold, Silver, Platinum, Palladium, Rhodium, Iridium, and Ruthenium.
+- **Reason:** The main report and workbook date should not be later than any of the prices represented under that date.
+- **Implementation detail:** `_effective_price_date(source_dates)` currently uses the earliest normalized source date.
+- **Trade-off:** The effective date may be earlier than the run date or some individual source dates. AM fixings can have their own date and are written separately.
+- **Status:** Adopted; retain this rule unless the business requirement changes.
 
-### D-011 — Read SMTP credentials from environment variables
+### D-014 — Preserve actual IBJA publication dates
+- **Decision:** Treat IBJA Silver 999 as an independent INR/kg reference series and write AM/PM sessions under their actual publication dates.
+- **Reason:** IBJA is not the LBMA Silver USD/troy-ounce series, and its AM/PM publication dates may differ from the main metals date.
+- **Email behavior:** Include available non-`None` IBJA rates in the email even if the dates differ from the main metals effective date; display the corresponding AM/PM dates to avoid implying the values share the metals date.
+- **Data-integrity rule:** Do not invent a missing session, copy AM into PM, or assign a rate to a session without source evidence.
+- **Trade-off:** The email can contain IBJA values from a different publication date, so separate date labels are necessary.
+- **Status:** Adopted.
 
-- **Decision:** Read SMTP username/password from environment variables or a local environment configuration that is excluded from version control.
-- **Reason:** Credentials should not be embedded in source code or committed to Git.
-- **Trade-off:** The runtime environment must be configured correctly before email delivery can work.
-- **Implementation guidance:** Do not use a real password as a source-code fallback. Validate required settings at startup, keep `.env` out of version control, and use a safe `.env.example` containing placeholders only.
-- **Status:** Recommended security requirement.
+### D-015 — Store RBI exchange rates under their actual publication dates
+- **Decision:** Write each RBI currency rate using the corresponding date in `fx_dates`, not automatically under the metals effective date.
+- **Reason:** RBI may return the latest available date on or before the requested date, especially around weekends and holidays. The two currencies should use their own returned dates.
+- **Implementation guidance:** Pair each `fx_prices` entry with its own `fx_dates` entry. Find the correct month sheet and date column; if the date cannot be found, log and skip rather than writing the rate under an incorrect date.
+- **Trade-off:** RBI values can appear under a different date from the metals data in the workbook.
+- **Status:** Adopted requirement; verify the current writer and caller implement this exact contract.
 
-### D-012 — Treat non-trading days and incomplete source data explicitly
+### D-016 — Calculate monthly average from valid observations
+- **Decision:** Calculate the monthly average as the arithmetic mean of valid recorded daily rates for each metal, not as `(minimum + maximum) / 2`.
+- **Reason:** The midpoint of the extremes does not represent the average of observations.
+- **Implementation guidance:** Skip blank cells and count merged duplicate cells only once. Treat valid AM and PM observations as separate observations when both are recorded. Do not combine IBJA or RBI values with the seven metal USD/troy-ounce series.
+- **Trade-off:** The average changes as new valid observations are added during the month.
+- **Status:** Adopted requirement.
 
-- **Decision:** Resolve the appropriate available trading date according to each source's documented behavior rather than assuming that today's page always contains a complete rate.
-- **Reason:** Weekends, holidays, delayed publication, and partially populated current-day tables can result in missing or incomplete prices.
-- **Trade-off:** Date-selection logic is source-specific and needs tests against historical examples.
-- **Implementation guidance:** Record the selected source date. For Johnson Matthey, the project's observed page behavior has required considering the second row when the first/current row may be incomplete; confirm the current page structure before relying on row position alone.
-- **Status:** Source-specific; validate against the current implementation.
+### D-017 — Keep the email presentation aligned with the data contract
+- **Decision:** Preserve missing values as blank, center-align numeric values and dates in the monthly Min/Max table, and display IBJA AM/PM publication dates alongside those rates.
+- **Reason:** The report should be readable without disguising missing values or suggesting that independently dated sources share the same date.
+- **Trade-off:** The HTML builder needs to receive both rate values and their source dates.
+- **Status:** Adopted presentation requirement; verify rendered email after edits.
+
+### D-018 — Separate personal portfolio from organization deployment
+- **Decision:** Use a sanitized personal repository for portfolio presentation and a company-approved repository/runtime for organizational operation.
+- **Reason:** The workbook, BRD, logs, internal addresses, source configuration, and credentials may contain confidential business information.
+- **Implementation guidance:** Exclude `.env`, real configuration secrets, live `.xlsx` files, backups, logs, internal BRD documents, and private data from public Git. Confirm company intellectual-property and publication approval before making the repository public.
+- **Trade-off:** Some company-specific configuration must be documented with safe examples rather than published verbatim.
+- **Status:** Required before public publication.
+
+### D-019 — Use a scheduler only after a manual run is validated
+- **Decision:** Prefer Windows Task Scheduler as the initial deployment option for the existing Windows-based project, subject to company approval.
+- **Reason:** It can launch the existing Python entry point without converting the script into a web service.
+- **Implementation guidance:** Run under an approved account, use the intended Python interpreter, ensure browser/network dependencies are available, keep the workbook unlocked, capture logs, and verify email and workbook results after scheduled runs.
+- **Trade-off:** The host must be powered on and connected at run time; a dedicated company VM may be more reliable than a personal workstation.
+- **Status:** Proposed deployment approach; not evidence that a scheduled task has already been installed.
 
 ## Change-entry template
 
-Copy this section for every meaningful decision:
-
 ### D-XXX — Short decision title
-
 - **Date:** YYYY-MM-DD
 - **Files changed:** `path/to/file.py`
 - **Context/problem:** What prompted the change?
 - **Decision:** What approach was selected?
-- **Reason:** Why is this approach appropriate?
-- **Alternatives considered:** What else could have been used, and why was it not chosen?
-- **Libraries/APIs affected:** Name the dependency or external source and its role.
-- **Consequences/trade-offs:** What becomes easier, harder, or newly constrained?
-- **Validation:** What test, sample, or command verified the change?
+- **Reason:** Why is it appropriate?
+- **Alternatives considered:** What else was considered?
+- **Libraries/APIs affected:** Relevant dependency or source.
+- **Consequences/trade-offs:** What changes operationally?
+- **Validation:** Tests or commands actually run.
 - **Status:** Proposed / Adopted / Superseded / Reverted
 
 ## Documentation maintenance
 
-1. Add a decision entry in the same change that introduces a meaningful architectural or behavioral change.
-2. Explain the reason and trade-off, not just what changed.
-3. Record the verification performed and any unverified assumptions.
-4. If a decision is replaced, mark the old entry as **Superseded** and link to the new entry; do not silently erase useful history.
-5. Keep `Flow.md` aligned with the actual code after changing function calls or execution order.
+1. Update `Flow.md` whenever call order, data contracts, date rules, workbook writes, or email inputs change.
+2. Add a decision entry for material architectural or behavior changes.
+3. Record only tests actually run; distinguish intended behavior from verified behavior.
+4. Mark replaced decisions as **Superseded** and link to the replacement.
