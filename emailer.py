@@ -58,6 +58,13 @@ def _fmt(value):
 
     return str(value)
 
+def _fmt_4(value):
+    """Format numeric values to 4 decimal places."""
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return f"{value:,.4f}"
+    return str(value)
 
 def _date_fmt(value):
     """Format date objects or already-formatted date strings."""
@@ -369,7 +376,7 @@ def build_html(
         f"<td style='{CELL_STYLE}background:{LIGHT_PINK};width:150px;'>"
         f"INR / 1 {currency}</td>"
         f"<td colspan='2' style='{CELL_STYLE}text-align:center;'>"
-        f"{_fmt(rate)}</td>"
+        f"{_fmt_4(rate)}</td>"
         f"</tr>"
         for currency, rate in exchange_rates.items()
     )
