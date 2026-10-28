@@ -8,9 +8,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 EXCEL_PATH = os.environ.get(
     "METAL_RATES_XLSX",
-    r"D:\Users\S1412\Documents\Workspace\metal_rates_automator\2026 Live Metals Rates Daily.xlsx",
+    os.path.join(BASE_DIR, "2026 Live Metals Rates Daily.xlsx")
 )
 
 LAYOUT = {
@@ -21,8 +23,6 @@ LAYOUT = {
     "first_data_col": 3,    # column D = first date column
     "label_col": 2,         # column C = metal name labels
     "monthly_average_col": 7,
-
-    # Metal name (as scraped) -> row number in the daily price block
     "metal_rows": {
         "GOLD": 6,
         "PLATINUM": 7,

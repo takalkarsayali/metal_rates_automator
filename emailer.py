@@ -114,6 +114,201 @@ def _get_ibja_rate(ibja_rates, period):
     return None
 
 
+# def build_html(
+#     prices: dict,
+#     minmax: dict,
+#     target_date: date,
+#     ibja_rates: dict = None,
+#     exchange_rates: dict = None,
+#     ibja_dates: dict = None,
+# ) -> str:
+#     ibja_rates = ibja_rates or {}
+#     exchange_rates = exchange_rates or {}
+#     ibja_dates = ibja_dates or {}
+
+#     # Normalize metal keys to uppercase.
+#     prices = {
+#         str(key).upper(): value
+#         for key, value in prices.items()
+#     }
+
+#     minmax = {
+#         str(key).upper(): value
+#         for key, value in minmax.items()
+#     }
+
+#     # Main live metals price rows.
+#     price_rows = "".join(
+#         f"<tr>"
+#         f"<td style='{CELL_STYLE}'>{metal}</td>"
+#         f"{_price_cells(prices.get(metal))}"
+#         f"</tr>"
+#         for metal in METAL_DISPLAY_ORDER
+#     )
+
+#     # Monthly Min / Date / Max / Date rows.
+#     minmax_rows = "".join(
+#         f"<tr>"
+#             f"<td style='{CELL_STYLE}'>{metal}</td>"
+#             f"<td style='{CELL_STYLE}text-align:center;'>"
+#             f"{_fmt(minmax[metal].get('min'))}</td>"
+#             f"<td style='{CELL_STYLE}background:{LIGHT_PINK};text-align:center;'>"
+#             f"{_date_fmt(minmax[metal].get('min_date'))}</td>"
+#             f"<td style='{CELL_STYLE}text-align:center;'>"
+#             f"{_fmt(minmax[metal].get('max'))}</td>"
+#             f"<td style='{CELL_STYLE}background:{LIGHT_PINK};text-align:center;'>"
+#             f"{_date_fmt(minmax[metal].get('max_date'))}</td>"
+#         f"</tr>"
+#         for metal in METAL_DISPLAY_ORDER
+#         if metal in minmax
+#     )
+
+#     # IBJA Silver 999 AM/PM rates.
+#     ibja_am = _get_ibja_rate(ibja_rates, "AM")
+#     ibja_pm = _get_ibja_rate(ibja_rates, "PM")
+
+#     # RBI exchange-rate rows.
+#     exchange_rows = "".join(
+#         f"<tr>"
+#         f"<td style='{CELL_STYLE}background:{LIGHT_PINK};width:300px;'>"
+#         f"INR / 1 {currency}</td>"
+#         f"<td colspan='2' style='{CELL_STYLE}text-align:center;'>"
+#         f"{_fmt(rate)}</td>"
+#         f"</tr>"
+#         for currency, rate in exchange_rates.items()
+#     )
+
+#     return f"""
+#     <!DOCTYPE html>
+#     <html>
+#     <body style="
+#         font-family:Calibri,Arial,sans-serif;
+#         font-size:12px;
+#         color:#111111;
+#     ">
+
+#         <p style="font-size: 15px"> Dear Team, </p>
+#         <p style="font-size: 15px">
+#             Please find below the metal prices in USD as on
+#             <b>{target_date:%d %b %Y}</b> with reference to LBMA website
+#             for Au, Ag, LPPM website for Pt, Pd &amp; JM website for Ir,
+#             Rh, Ru.
+#         </p>
+
+#         <!-- LIVE METALS PRICE TABLE -->
+
+#         <table style="
+#             border-collapse:collapse;
+#             width:300px;
+#         ">
+#             <tr>
+#                 <th style="{CELL_STYLE}background:{LIGHT_PINK};text-align:left;">
+#                     Day
+#                 </th>
+#                 <th colspan="2"
+#                     style="{CELL_STYLE}background:{LIGHT_PINK};text-align:center;">
+#                     {target_date:%A}
+#                 </th>
+#             </tr>
+
+#             <tr>
+#                 <th style="text-align:left;">
+#                     LIVE METALS PRICES in ($ / Toz):
+#                 </th>
+#                 <th colspan="2"
+#                     style="text-align:center;">
+#                     LBMA &amp; JM
+#                 </th>
+#             </tr>
+
+#             <tr>
+#                 <th style="{CELL_STYLE}background:{PINK};text-align:left;">
+#                     Date
+#                 </th>
+#                 <th colspan="2"
+#                     style="{CELL_STYLE}background:{PINK};text-align:center;">
+#                     {target_date:%d-%m-%Y}
+#                 </th>
+#             </tr>
+
+#             <tr>
+#                 <th style="{CELL_STYLE}text-align:left;">Time</th>
+#                 <th style="{CELL_STYLE}text-align:center;">AM</th>
+#                 <th style="{CELL_STYLE}text-align:center;">PM</th>
+#             </tr>
+#             {price_rows}
+#         </table>
+
+#         <!-- IBJA SILVER RATE -->
+
+#         <p style="margin-top:18px;margin-bottom:4px;">
+#             <b>IBJA Silver Rate (INR/Kg)</b>
+#         </p>
+
+#         <table style="border-collapse:collapse;width:300px;">
+#             <tr>
+#                 <th style="{CELL_STYLE}text-align:center;">Silver999</th>
+#                 <th style="{CELL_STYLE}text-align:center;">AM</th>
+#                 <th style="{CELL_STYLE}text-align:center;">PM</th>
+#             </tr>
+#             <tr>
+#                 <td style="{CELL_STYLE}background:{LIGHT_PINK};width:300px;">
+#                     Silver 999
+#                 </td>
+#                 <td style="{CELL_STYLE}text-align:center;">
+#                     {_fmt(ibja_am)}
+#                 </td>
+#                 <td style="{CELL_STYLE}text-align:center;">
+#                     {_fmt(ibja_pm)}
+#                 </td>
+#             </tr>
+#         </table>
+
+#         <!-- RBI EXCHANGE RATES -->
+
+#         <p style="margin-top:28px;margin-bottom:4px;">
+#             <b>Exchange Rate from RBI Rate</b>
+#         </p>
+
+#         <table style="border-collapse:collapse;width:300px;">
+#             {exchange_rows}
+#         </table>
+
+#         <!-- MONTHLY MINIMUM / MAXIMUM TABLE -->
+
+#         <p style="margin-top:20px; font-size: 15px">
+#             Please find in below table, the metal rates for
+#             <b>{target_date:%b %Y}</b> with Minimum &amp; Maximum rates:
+#         </p>
+
+#         <table style="border-collapse:collapse;width:300px;">
+#             <tr style="background:{PINK};">
+#                 <th rowspan="1"
+#                     style="{CELL_STYLE}text-align:left;width:125px;">
+#                     LIVE METALS PRICES<br/>
+#                     in ($ / Toz):
+#                 </th>
+#                 <th colspan="2"
+#                     style="{CELL_STYLE}text-align:center;">
+#                     Min / Date
+#                 </th>
+#                 <th colspan="2"
+#                     style="{CELL_STYLE}text-align:center;">
+#                     Max / Date
+#                 </th>
+#             </tr>
+#             {minmax_rows}
+#         </table>
+
+#         <p style="margin-top:18px;color:#666666;font-size:11px;">
+#             This email was automatically generated by the Metal Rates
+#             Automator.
+#         </p>
+
+#     </body>
+#     </html>
+#     """
+
 def build_html(
     prices: dict,
     minmax: dict,
@@ -168,9 +363,10 @@ def build_html(
     ibja_pm = _get_ibja_rate(ibja_rates, "PM")
 
     # RBI exchange-rate rows.
+    # FIX: Changed width to 150px to perfectly align with the top table.
     exchange_rows = "".join(
         f"<tr>"
-        f"<td style='{CELL_STYLE}background:{LIGHT_PINK};width:210px;'>"
+        f"<td style='{CELL_STYLE}background:{LIGHT_PINK};width:150px;'>"
         f"INR / 1 {currency}</td>"
         f"<td colspan='2' style='{CELL_STYLE}text-align:center;'>"
         f"{_fmt(rate)}</td>"
@@ -199,10 +395,10 @@ def build_html(
 
         <table style="
             border-collapse:collapse;
-            width:385px;
+            width:350px;
         ">
             <tr>
-                <th style="{CELL_STYLE}background:{LIGHT_PINK};text-align:left;">
+                <th style="{CELL_STYLE}background:{LIGHT_PINK};text-align:left;width:150px;">
                     Day
                 </th>
                 <th colspan="2"
@@ -212,11 +408,11 @@ def build_html(
             </tr>
 
             <tr>
-                <th style="{CELL_STYLE}background:{PINK};text-align:left;">
+                <th style="{CELL_STYLE}text-align:left;">
                     LIVE METALS PRICES in ($ / Toz):
                 </th>
                 <th colspan="2"
-                    style="{CELL_STYLE}background:{LIGHT_PINK};text-align:center;">
+                    style="{CELL_STYLE}text-align:center;">
                     LBMA &amp; JM
                 </th>
             </tr>
@@ -232,9 +428,9 @@ def build_html(
             </tr>
 
             <tr>
-                <th style="{CELL_STYLE}text-align:left;">Time</th>
-                <th style="{CELL_STYLE}text-align:center;">AM</th>
-                <th style="{CELL_STYLE}text-align:center;">PM</th>
+                <th style="{CELL_STYLE}text-align:left;width:150px;">Time</th>
+                <th style="{CELL_STYLE}text-align:center;width:100px;">AM</th>
+                <th style="{CELL_STYLE}text-align:center;width:100px;">PM</th>
             </tr>
             {price_rows}
         </table>
@@ -245,14 +441,14 @@ def build_html(
             <b>IBJA Silver Rate (INR/Kg)</b>
         </p>
 
-        <table style="border-collapse:collapse;width:385px;">
+        <table style="border-collapse:collapse;width:350px;">
             <tr>
-                <th style="{CELL_STYLE}text-align:center;">Silver999</th>
-                <th style="{CELL_STYLE}text-align:center;">AM</th>
-                <th style="{CELL_STYLE}text-align:center;">PM</th>
+                <th style="{CELL_STYLE}text-align:left;width:150px;">Silver999</th>
+                <th style="{CELL_STYLE}text-align:center;width:100px;">AM</th>
+                <th style="{CELL_STYLE}text-align:center;width:100px;">PM</th>
             </tr>
             <tr>
-                <td style="{CELL_STYLE}background:{LIGHT_PINK};width:210px;">
+                <td style="{CELL_STYLE}background:{LIGHT_PINK};">
                     Silver 999
                 </td>
                 <td style="{CELL_STYLE}text-align:center;">
@@ -270,7 +466,7 @@ def build_html(
             <b>Exchange Rate from RBI Rate</b>
         </p>
 
-        <table style="border-collapse:collapse;width:385px;">
+        <table style="border-collapse:collapse;width:350px;">
             {exchange_rows}
         </table>
 
@@ -280,20 +476,21 @@ def build_html(
             Please find in below table, the metal rates for
             <b>{target_date:%b %Y}</b> with Minimum &amp; Maximum rates:
         </p>
-
-        <table style="border-collapse:collapse;width:610px;">
+        
+        <!-- Expanded width to 550px so dates don't wrap -->
+        <table style="border-collapse:collapse;width:550px;">
             <tr style="background:{PINK};">
                 <th rowspan="1"
-                    style="{CELL_STYLE}text-align:left;width:125px;">
+                    style="{CELL_STYLE}text-align:left;width:150px;">
                     LIVE METALS PRICES<br/>
                     in ($ / Toz):
                 </th>
                 <th colspan="2"
-                    style="{CELL_STYLE}text-align:center;">
+                    style="{CELL_STYLE}text-align:center;width:200px;">
                     Min / Date
                 </th>
                 <th colspan="2"
-                    style="{CELL_STYLE}text-align:center;">
+                    style="{CELL_STYLE}text-align:center;width:200px;">
                     Max / Date
                 </th>
             </tr>
