@@ -98,7 +98,7 @@ SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 
 EMAIL_FROM = SMTP_USERNAME
 EMAIL_TO = [
-    "jayesh.kapadnis@hp.co.in",  # replace with the real RS distribution list
+    # "jayesh.kapadnis@hp.co.in",  # replace with the real RS distribution list
     "sayali.takalkar@hp.co.in",
 ]
 EMAIL_CC = [

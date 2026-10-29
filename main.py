@@ -2,7 +2,7 @@ import inspect
 import logging
 import os
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import config
 from lbma_fetcher import fetch_lbma_fixings
 from jm_fetcher import fetch_jm_prices
@@ -374,6 +374,122 @@ def _build_email_inputs(prices, am_prices, am_dates, ibja_prices, ibja_dates, fx
 
     return email_prices, email_ibja, email_fx
 
+def _num(value):
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _read_slot(ws, row, col, slot):
+    """slot 0 = AM column, 1 = PM column, None = single fixing (left cell,
+    falling back to the right cell if the value sits there)."""
+    if slot is None:
+        v = _num(ws.cell(row=row, column=col).value)
+        return v if v is not None else _num(ws.cell(row=row, column=col + 1).value)
+    return _num(ws.cell(row=row, column=col + slot).value)
+
+
+def _scan_back(ws, row, start_col, slot):
+    first = config.LAYOUT["first_data_col"]
+    col = start_col
+    while col >= first:
+        v = _read_slot(ws, row, col, slot)
+        if v is not None:
+            return v
+        col -= 2                      # one day = AM/PM column pair
+    return None
+
+
+def _previous_value(wb, row, ref_date, slot):
+    """Most recent recorded value BEFORE ref_date's column (skips weekends /
+    holidays automatically). Falls back to last month's sheet."""
+    ref_date = _normalize_date(ref_date)
+    first = config.LAYOUT["first_data_col"]
+
+    sheet = _month_sheet_name(ref_date)
+    if sheet in wb.sheetnames:
+        ws = wb[sheet]
+        col = _find_column_for_date(ws, ref_date)
+        if col is not None:
+            v = _scan_back(ws, row, col - 2, slot)
+            if v is not None:
+                return v
+
+    prev_month = ref_date.replace(day=1) - timedelta(days=1)
+    prev_sheet = _month_sheet_name(prev_month)
+    if prev_sheet in wb.sheetnames:
+        ws = wb[prev_sheet]
+        last = first + 2 * ((ws.max_column - first) // 2)
+        return _scan_back(ws, row, last, slot)
+    return None
+
+IBJA_ROW_KEYS = ("SILVER999", "SILVER_999", "IBJA_SILVER999",
+                 "ibja_row", "ibja_silver999_row", "silver999_row")
+
+
+def _find_ibja_row(wb, ref_date):
+    """Row of the IBJA Silver 999 data in the month sheet.
+    1) known config keys, 2) fall back to the row label containing '999'."""
+    layout = config.LAYOUT
+
+    for container in (layout.get("metal_rows", {}), layout):
+        for key in IBJA_ROW_KEYS:
+            row = container.get(key)
+            if isinstance(row, int):
+                return row
+
+    sheet = _month_sheet_name(_normalize_date(ref_date))
+    if sheet in wb.sheetnames:
+        ws = wb[sheet]
+        for r in range(1, ws.max_row + 1):
+            for c in range(1, layout["first_data_col"]):
+                v = ws.cell(row=r, column=c).value
+                if isinstance(v, str) and "999" in v:
+                    return r
+    return None
+
+
+def _build_previous_rates(price_date, prices, ibja_prices, ibja_dates, fx_prices, fx_dates):
+    """Previous recorded rates, read from Excel, used ONLY for email arrows."""
+    logger = logging.getLogger(__name__)
+    previous_prices, previous_ibja, previous_fx = {}, {}, {}
+    try:
+        wb = openpyxl.load_workbook(config.EXCEL_PATH, data_only=True)
+        metal_rows = config.LAYOUT["metal_rows"]
+
+        for metal in prices:
+            row = metal_rows.get(metal)
+            if row is None:
+                continue
+            if metal in AM_METALS:
+                previous_prices[metal] = {
+                    "AM": _previous_value(wb, row, price_date, 0),
+                    "PM": _previous_value(wb, row, price_date, 1),
+                }
+            else:
+                previous_prices[metal] = _previous_value(wb, row, price_date, None)
+
+        ibja_dates_ref = [d for d in ibja_dates.values() if d]
+        if ibja_dates_ref:
+            ibja_row = _find_ibja_row(wb, ibja_dates_ref[0])
+            if ibja_row is None:
+                logger.warning("IBJA Silver 999 row not found; no email arrows for it.")
+            else:
+                logger.info("IBJA previous-rate lookup using Excel row %s", ibja_row)
+                for session, slot in (("AM", 0), ("PM", 1)):
+                    key = f"SILVER999_{session}"
+                    if key in ibja_prices and ibja_dates.get(key):
+                        previous_ibja[session] = _previous_value(
+                            wb, ibja_row, ibja_dates[key], slot)
+
+        fx_rows = config.LAYOUT.get("Exchange_Rate", {})
+        for key, (row_key, _label) in FX_ROW_MAP.items():
+            row = fx_rows.get(row_key)
+            if key in fx_prices and row is not None and fx_dates.get(key):
+                previous_fx[key.split("_")[0]] = _previous_value(
+                    wb, row, fx_dates[key], None)
+    except Exception:
+        # warning level -> log file only, console stays untouched
+        logger.warning("Could not read previous rates for email arrows.", exc_info=True)
+    return previous_prices, previous_ibja, previous_fx
 
 def run(target_date: date = None):
     target_date = target_date or date.today()
@@ -488,6 +604,9 @@ def run(target_date: date = None):
 
     minmax = read_minmax_for_email(price_date)
 
+    previous_prices, previous_ibja, previous_fx = _build_previous_rates(
+        price_date, prices, ibja_prices, ibja_dates, fx_prices, fx_dates
+    )
     # The email is dated with price_date (same as the Excel column), not the
     # run date, and gets its inputs in the shapes emailer.build_html() expects.
     email_prices, email_ibja, email_fx = _build_email_inputs(
@@ -501,6 +620,9 @@ def run(target_date: date = None):
         ibja_rates=email_ibja,
         exchange_rates=email_fx,
         ibja_dates=ibja_dates,
+        previous_prices=previous_prices,
+        previous_ibja_rates=previous_ibja,
+        previous_exchange_rates=previous_fx,
     )
 
     send_email(
